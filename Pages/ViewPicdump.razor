@@ -129,6 +129,10 @@
                                 StateHasChanged();
                             });
                         }
+                        catch (TaskCanceledException)
+                        {
+                            Log.Debug("Task was cancled");
+                        }
                         catch (Exception ex)
                         {
                             Snackbar.Add("Fehler: Picdump Bilder konnten nicht geladen werden!", Severity.Error);

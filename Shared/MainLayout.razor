@@ -1,17 +1,46 @@
 ﻿@inherits LayoutComponentBase
 
-<MudThemeProvider />
+<MudThemeProvider @ref="@_mudThemeProvider" @bind-IsDarkMode="@_isDarkMode" Theme="MyCustomTheme"/>
 <MudDialogProvider/>
 <MudSnackbarProvider/>
 
 <MudLayout>
-    <MudAppBar Elevation="1" Color="Color.Tertiary">
+    <MudAppBar Elevation="1" Color="Color.Primary">
          <MudAvatar Image="icon-maskable.png" Size="Size.Medium" Class="ma-2" Square="true" />
         <MudText Typo="Typo.h5" Class="ml-3">BlazingPicdump</MudText>
         <MudSpacer />
-        <MudIconButton Icon="@Icons.Custom.Brands.GitHub" Color="Color.Inherit" Link="https://seji64.github.io/BlazingPicdump/"/>
+        <MudIconButton Icon="@Icons.Custom.Brands.GitHub" Color="Color.Inherit" Link="https://github.com/Seji64/BlazingPicdump"/>
     </MudAppBar>
     <MudMainContent>
         @Body
     </MudMainContent>
 </MudLayout>
+
+@code
+{
+
+    private bool _isDarkMode;
+    private MudThemeProvider _mudThemeProvider;
+
+    private MudTheme MyCustomTheme = new MudTheme()
+    {
+        Palette = new Palette()
+        {
+            Primary = Colors.Green.Darken1
+        },
+        PaletteDark = new Palette()
+        {
+            Primary = Colors.Blue.Darken4
+        }
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _isDarkMode = await _mudThemeProvider.GetSystemPreference();
+            StateHasChanged();
+        }
+    }
+
+}

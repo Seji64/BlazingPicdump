@@ -7,6 +7,11 @@
 @inject NetworkState NetworkState
 @implements IDisposable
 
+<MudToolBar>
+    <MudSpacer />
+    <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.Refresh" OnClick="@Refresh" Disabled="@_loading" >Refresh</MudButton>    
+</MudToolBar>
+
 <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-5">
 
     <MudGrid Justify="Justify.SpaceEvenly">
@@ -85,10 +90,10 @@
                         <MudTooltip Text="Picdump anzeigen">
                             <BlazingPicdump.Components.Network>
                                 <Online>
-                                    <MudIconButton Icon="@Icons.Material.Outlined.PlayArrow" Color="Color.Primary" OnClick="@(() => NavigateToPicdump(picdump))" aria-label="Picdump anzeigen"/>
+                                    <MudIconButton Icon="@Icons.Material.Outlined.PlayArrow" Color="Color.Info" OnClick="@(() => NavigateToPicdump(picdump))" aria-label="Picdump anzeigen"/>
                                 </Online>
                                 <Offline>
-                                    <MudIconButton Icon="@Icons.Material.Outlined.PlayArrow" Color="Color.Primary" OnClick="@(() => NavigateToPicdump(picdump))" aria-label="Picdump anzeigen" Disabled=@(AvailibleOfflinePicdumps.Contains(picdump.Id) == false)/>
+                                    <MudIconButton Icon="@Icons.Material.Outlined.PlayArrow" Color="Color.Info" OnClick="@(() => NavigateToPicdump(picdump))" aria-label="Picdump anzeigen" Disabled=@(AvailibleOfflinePicdumps.Contains(picdump.Id) == false)/>
                                 </Offline>
                             </BlazingPicdump.Components.Network>
                             
@@ -118,7 +123,7 @@
 
 @code
 {
-
+    private bool _loading = false;
     private List<Picdump>? _picdumps;
     private CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
     public List<long> PicdumpOfflineProcessIsRunning { get; set; } = new();
@@ -128,43 +133,48 @@
     {
         NavigationManager.NavigateTo($"picdump/{picdump.Id}");
     }
+    private async Task Refresh()
+    {
+        _loading = true;
+        Log.Debug($"Networkstate IsOnline: {NetworkState.IsOnline}");
+        _picdumps = new();
+        if (NetworkState.IsOnline)
+        {
+            try
+            {
+                Log.Debug("fetching online picdumps");
+                var onlinePicdumps = await GetAvailibePicdumps();
+                Log.Debug("DONE!");
+
+                if (onlinePicdumps != null && onlinePicdumps.Any())
+                {
+                    _picdumps.AddRange(onlinePicdumps);
+                    StateHasChanged();
+                }
+                else
+                {
+                    Log.Warning("online fetch did not return any picdumps");
+                }
+
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex.Message);
+            }
+        }
+
+        Log.Debug("Process picdump db");
+        ProcessPicdumpDb();
+        _loading = false;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
-        {
-            _picdumps = new();
+        {       
             Log.Debug("First Render");
 
-            Log.Debug($"Networkstate IsOnline: {NetworkState.IsOnline}");
-
-            if (NetworkState.IsOnline)
-            {
-                try
-                {
-                    Log.Debug("fetching online picdumps");
-                    var onlinePicdumps = await GetAvailibePicdumps();
-                    Log.Debug("DONE!");
-
-                    if (onlinePicdumps != null && onlinePicdumps.Any())
-                    {
-                        _picdumps.AddRange(onlinePicdumps);
-                        StateHasChanged();
-                    }
-                    else
-                    {
-                        Log.Warning("online fetch did not return any picdumps");
-                    }
-
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex.Message);
-                }
-            }
-
-            Log.Debug("Process picdump db");
-            ProcessPicdumpDb();
+            await Refresh();
         }
         else
         {
