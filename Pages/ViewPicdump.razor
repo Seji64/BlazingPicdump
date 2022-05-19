@@ -1,0 +1,147 @@
+﻿@page "/picdump/{Id:long}"
+@inject ISnackbar Snackbar
+@inject IHttpClientFactory ClientFactory
+@inject IIndexedDbFactory DbFactory
+@inject NavigationManager NavigationManager
+@inject NetworkState NetworkState
+@implements IDisposable
+
+<MudToolBar>
+    <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.ArrowBack" OnClick="@(() => NavigationManager.NavigateTo("/"))">Back</MudButton>
+    <MudSpacer />
+</MudToolBar>
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-5">
+    <MudGrid Justify="Justify.Center">
+
+        @if(error_IdNotFoundInDb)
+        {
+            <MudAlert Severity="Severity.Error">@($"Leider ist ein Fehler aufgetreten. Der Picdump mit der Id '{Id}' wurde nicht gefunden")</MudAlert>
+        }
+        else if (!NetworkState.IsOnline && networkNeeded)
+        {
+            <MudAlert Severity="Severity.Warning">Sorry, hier gibt es nichts zu sehen, da due aktuell Offline bist</MudAlert>
+        }
+        else
+        {
+            @if(Images != null && Images.Any())
+            {
+                @foreach(Image image in Images)
+                {
+                    <MudItem xs="12">
+                        <MudImage Fluid="true" Src=@(image.Url) Class="rounded-lg" Elevation="25"/>
+                    </MudItem>    
+                }
+            }
+            else
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    <MudItem xs="12">
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Animation="Animation.Wave" Height="650px" Width="830px" />
+                    </MudItem>  
+                }
+            }
+        }
+
+
+     </MudGrid>
+    <MudScrollToTop>
+        <MudFab Color="Color.Tertiary" Icon="@Icons.Filled.ArrowCircleUp"/>
+    </MudScrollToTop>
+
+</MudContainer>
+<MudToolBar>
+    <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.ArrowBack" OnClick="@(() => NavigationManager.NavigateTo("/"))">Back</MudButton>
+    <MudSpacer />
+</MudToolBar>
+
+@code {
+
+    [Parameter]
+    public long? Id { get; set; }
+
+    List<Image>? Images;
+    bool error_IdNotFoundInDb = false;
+    bool networkNeeded = false;
+
+    private CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+
+    protected override async Task OnParametersSetAsync()
+    {
+
+        if (Id != null)
+        {
+            await GetPicDumpImages();
+        }
+    }
+
+    public void Dispose()
+    {
+        cancellationTokenSource?.Cancel();
+        cancellationTokenSource?.Dispose();
+    }
+
+    private async Task GetPicDumpImages()
+    {
+        string? picDumpBaseUrl;
+        using (var db = await this.DbFactory.Create<PicdumpDb>())
+        {
+            picDumpBaseUrl = db.Picdumps.SingleOrDefault(x => x.Id == Id)?.BaseURL;
+        }
+
+        if (!string.IsNullOrEmpty(picDumpBaseUrl))
+        {
+            using (var db = await this.DbFactory.Create<PicdumpDb>())
+            {
+                if (db.Images.Any(p => p.ParentPicdumpId == Id))
+                {
+                    Images = new();
+                    db.Images.Where(p => p.ParentPicdumpId == Id).AsParallel().AsOrdered().ForAll(i =>
+                    {
+                        Images.Add(i);
+                        StateHasChanged();
+                    });
+                }
+                else
+                {
+                    networkNeeded = true;
+
+                    if (NetworkState.IsOnline)
+                    {
+                        try
+                        {
+                            var httpClient = ClientFactory.CreateClient("Picdump");
+                            var response = await httpClient.GetAsync($"/{picDumpBaseUrl}");
+                            response.EnsureSuccessStatusCode();
+
+                            var content = await response.Content.ReadAsStringAsync();
+                            var imgLinks = Helper.GetPicdumpImageUrls(content);
+                            var token = cancellationTokenSource.Token;
+
+                            Images = new();
+
+                            await System.Threading.Tasks.Parallel.ForEachAsync(imgLinks, async (imgLink, token) =>
+                            {
+                                var ImghttpClient = ClientFactory.CreateClient("Picdump");
+                                var imageFileName = System.IO.Path.GetFileName(imgLink);
+                                var base64Payload = await Helper.DownloadImageAsBase64($"/{imgLink}", ImghttpClient, cancellationTokenSource.Token);
+                                Images.Add(new Image() { Name = imageFileName, Url=$"data:image/png;base64,{base64Payload}", ParentPicdumpId = Id});
+                                StateHasChanged();
+                            });
+                        }
+                        catch (Exception ex)
+                        {
+                            Snackbar.Add("Fehler: Picdump Bilder konnten nicht geladen werden!", Severity.Error);
+                            Log.Error(ex.Message);
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            error_IdNotFoundInDb = true;
+            Log.Error($"no picdump found in db with ID/hash {Id}");
+        }
+    }
+}

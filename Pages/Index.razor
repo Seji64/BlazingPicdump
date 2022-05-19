@@ -1,0 +1,343 @@
+﻿@page "/"
+@inject ISnackbar Snackbar
+@using System.Net.Http
+@inject IHttpClientFactory ClientFactory
+@inject NavigationManager NavigationManager
+@inject IIndexedDbFactory DbFactory
+@inject NetworkState NetworkState
+@implements IDisposable
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-5">
+
+    <MudGrid Justify="Justify.SpaceEvenly">
+
+    @if(_picdumps is null || !_picdumps.Any())
+    {
+        for (int i = 0; i < 8; i++)
+        {
+            <MudItem xs="6" sm="6">
+                <MudCard>
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudSkeleton SkeletonType="SkeletonType.Text" Animation="Animation.Wave" Width="80%" />
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent class="d-flex flex-row flex-grow-1 gap-2 align-center">
+                        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Animation="Animation.Wave" Width="100px" />
+                        <MudSkeleton SkeletonType="SkeletonType.Text" Animation="Animation.Wave" Width="80%" />
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudSkeleton SkeletonType="SkeletonType.Circle" Animation="Animation.Wave" Height="30px" Width="30px" Class="ml-2 mb-2" />
+                        <MudSkeleton SkeletonType="SkeletonType.Circle" Animation="Animation.Wave" Height="30px" Width="30px" Class="ml-3 mb-2" />
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    }
+    else
+    {
+        @foreach(var picdump in _picdumps)
+        {
+            <MudItem xs="12" sm="6" md="6">
+                <MudCard>
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.body1">@picdump.Name</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <BlazingPicdump.Components.Network>
+                                <Online>
+                                    @if (!AvailibleOfflinePicdumps.Contains(picdump.Id))
+                                    {
+                                        @if (PicdumpOfflineProcessIsRunning.Contains(picdump.Id))
+                                        {
+                                            <MudProgressCircular Class="mt-1 mr-2" Size="Size.Small" Indeterminate="true"/>
+                                        }
+                                        else
+                                        {
+                                            <MudTooltip Text="Für Offline nutzung herunterladen">
+                                                <MudIconButton Icon="@Icons.Material.Outlined.DownloadForOffline" Color="Color.Default" aria-label="DownloadForOffline" OnClick="@(() => DownloadPicdump(picdump))" />
+                                            </MudTooltip>    
+                                        }           
+                                    }    
+                                </Online>
+                            </BlazingPicdump.Components.Network>
+                             @if (AvailibleOfflinePicdumps.Contains(picdump.Id))
+                             {
+                                @if (PicdumpOfflineProcessIsRunning.Contains(picdump.Id))
+                                {
+                                    <MudProgressCircular Class="mt-1 mr-2" Size="Size.Small" Indeterminate="true"/>
+                                }
+                                else
+                                {
+                                    <MudTooltip Text="Offlinekopie löschen">
+                                        <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" aria-label="DeleteOfflineCache" OnClick="@(() => DeleteOfflinePicdump(picdump))" />
+                                    </MudTooltip>
+                                }    
+                             }
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent class="d-flex flex-row flex-grow-1 gap-2 align-center">
+                            <MudImage Src=@(picdump.Thumbnail?.Url) Fluid="true" Class="rounded-lg"/>
+                            <MudText Typo="Typo.body2">@picdump.Description)</MudText>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudTooltip Text="Picdump anzeigen">
+                            <BlazingPicdump.Components.Network>
+                                <Online>
+                                    <MudIconButton Icon="@Icons.Material.Outlined.PlayArrow" Color="Color.Primary" OnClick="@(() => NavigateToPicdump(picdump))" aria-label="Picdump anzeigen"/>
+                                </Online>
+                                <Offline>
+                                    <MudIconButton Icon="@Icons.Material.Outlined.PlayArrow" Color="Color.Primary" OnClick="@(() => NavigateToPicdump(picdump))" aria-label="Picdump anzeigen" Disabled=@(AvailibleOfflinePicdumps.Contains(picdump.Id) == false)/>
+                                </Offline>
+                            </BlazingPicdump.Components.Network>
+                            
+                        </MudTooltip>
+                         <MudTooltip Text="Teilen">
+                             <BlazingPicdump.Components.Network>
+                                 <Online>
+                                     <MudIconButton Icon="@Icons.Material.Outlined.Share" Color="Color.Tertiary" aria-label="Teilen"/>
+                                 </Online>
+                                 <Offline>
+                                     <MudIconButton Icon="@Icons.Material.Outlined.Share" Color="Color.Tertiary" aria-label="Teilen" Disabled="true"/>
+                                 </Offline>
+                             </BlazingPicdump.Components.Network>
+                             
+                         </MudTooltip>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    }
+    </MudGrid>
+    <MudScrollToTop>
+        <MudFab Color="Color.Tertiary" Icon="@Icons.Outlined.ArrowCircleUp" />
+    </MudScrollToTop>
+</MudContainer>
+
+
+@code
+{
+
+    private List<Picdump>? _picdumps;
+    private CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+    public List<long> PicdumpOfflineProcessIsRunning { get; set; } = new();
+    public List<long> AvailibleOfflinePicdumps { get; set; } = new();
+
+    private void NavigateToPicdump(Picdump picdump)
+    {
+        NavigationManager.NavigateTo($"picdump/{picdump.Id}");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _picdumps = new();
+            Log.Debug("First Render");
+
+            Log.Debug($"Networkstate IsOnline: {NetworkState.IsOnline}");
+
+            if (NetworkState.IsOnline)
+            {
+                try
+                {
+                    Log.Debug("fetching online picdumps");
+                    var onlinePicdumps = await GetAvailibePicdumps();
+                    Log.Debug("DONE!");
+
+                    if (onlinePicdumps != null && onlinePicdumps.Any())
+                    {
+                        _picdumps.AddRange(onlinePicdumps);
+                        StateHasChanged();
+                    }
+                    else
+                    {
+                        Log.Warning("online fetch did not return any picdumps");
+                    }
+
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex.Message);
+                }
+            }
+
+            Log.Debug("Process picdump db");
+            ProcessPicdumpDb();
+        }
+        else
+        {
+            Log.Debug("NOT First Render");
+        }
+
+        Log.Debug("AfterRender Complete");
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private async Task ProcessPicdumpDb()
+    {
+        Log.Debug("UpdatePicdumpDb");
+        await UpdatePicdumpDb();
+        Log.Debug("GetPicdumpsFromDB");
+        await GetPicdumpsFromDB();
+        Log.Debug("UpdatePicdumpsOfflineStatus");
+        await UpdatePicdumpsOfflineStatus();
+        StateHasChanged();
+    }
+
+    private async Task UpdatePicdumpsOfflineStatus()
+    {
+        var token = cancellationTokenSource.Token;
+        if (_picdumps != null && _picdumps.Any())
+        {
+            List<long?> images = new();
+            using (var db = await this.DbFactory.Create<PicdumpDb>())
+            {
+                images = db.Images.Where(x => x.ParentPicdumpId != null).Select(x => x.ParentPicdumpId).Distinct().ToList();
+            }
+
+            foreach (var picdump in _picdumps)
+            {
+                if (images.Any(x => x == picdump.Id))
+                {
+                    Log.Debug($"Adding Picdump Id {picdump.Id}");
+                    AvailibleOfflinePicdumps.Add(picdump.Id);
+                    //StateHasChanged();
+                }
+                else if (AvailibleOfflinePicdumps.Contains(picdump.Id))
+                {
+                    AvailibleOfflinePicdumps.Remove(picdump.Id);
+                }
+            }
+        }
+        else
+        {
+            Log.Debug("picdumps is currently null or empty");
+        }
+    }
+
+    private async Task UpdatePicdumpDb()
+    {
+        if(_picdumps != null && _picdumps.Any())
+        {
+            using (var db = await this.DbFactory.Create<PicdumpDb>())
+            {
+                _picdumps.AsParallel().AsOrdered().ForAll(picdump =>
+                {
+                    if (!db.Picdumps.Any(x => x.Hash == picdump.Hash))
+                    {
+                        db.Picdumps.Add(picdump);
+                    }
+                });
+                await db.SaveChanges();
+            }
+        }
+    }
+
+    private async Task GetPicdumpsFromDB()
+    {
+        List<Picdump> dbPicdumps;
+
+        var sw = new System.Diagnostics.Stopwatch();
+        sw.Start();
+
+        using (var db = await this.DbFactory.Create<PicdumpDb>())
+        {
+            dbPicdumps = db.Picdumps.ToList();
+        }
+        sw.Stop();
+        Log.Debug(sw.ElapsedMilliseconds.ToString());
+
+        if(_picdumps != null && _picdumps.Any())
+        {
+            dbPicdumps.AsParallel().AsOrdered().ForAll(picdump =>
+            {
+                var index = _picdumps.FindIndex(x => x.Hash == picdump.Hash);
+                _picdumps.RemoveAt(index);
+                _picdumps.Insert(index, picdump);
+            });
+        }
+        else
+        {
+            _picdumps = new();
+            _picdumps.AddRange(dbPicdumps);
+        }
+    }
+
+    private async Task<List<Picdump>> GetAvailibePicdumps()
+    {
+        HttpClient httpClient = ClientFactory.CreateClient("Picdump");
+
+        var response = await httpClient.GetAsync("/http://www.bildschirmarbeiter.com/plugs/category/picdumps");
+        response.EnsureSuccessStatusCode();
+        var mainContent = await response.Content.ReadAsStringAsync();
+        var picdumps =  await Helper.GetPicdumpOverview(mainContent, httpClient, cancellationTokenSource.Token);
+
+        return picdumps;
+    }
+
+    private async Task DeleteOfflinePicdump(Picdump picdump)
+    {
+        PicdumpOfflineProcessIsRunning.Add(picdump.Id);
+        using (var db = await this.DbFactory.Create<PicdumpDb>())
+        {
+            foreach(var item in db.Images.Where(x => x.ParentPicdumpId == picdump.Id))
+            {
+                db.Images.Remove(item);
+            }
+            await db.SaveChanges();
+        }
+        AvailibleOfflinePicdumps.Remove(picdump.Id);
+        PicdumpOfflineProcessIsRunning.Remove(picdump.Id);
+        StateHasChanged();
+    }
+
+    private async Task DownloadPicdump(Picdump picdump)
+    {
+        string? baseUrl = string.Empty;
+
+        PicdumpOfflineProcessIsRunning.Add(picdump.Id);
+
+        try
+        {
+            using (var db = await this.DbFactory.Create<PicdumpDb>())
+            {
+                baseUrl = db.Picdumps.Single(x => x.Id == picdump.Id).BaseURL;
+            }
+
+            if (!string.IsNullOrEmpty(baseUrl))
+            {
+                var images = await Helper.GetAllPicdumpImages(baseUrl, ClientFactory.CreateClient("Picdump"), picdump.Id, cancellationTokenSource.Token);
+                using (var db = await this.DbFactory.Create<PicdumpDb>())
+                {
+                    images.AsParallel().AsOrdered().ForAll(y =>
+                    {
+                        db.Images.Add(y);
+                    });
+                    await db.SaveChanges();
+                }
+
+                AvailibleOfflinePicdumps.Add(picdump.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fehler: Picdump '{picdump.Name}' konnte nicht heruntergeladen werden!",Severity.Error);
+            Log.Error(ex.Message);
+        }
+        finally
+        {
+            PicdumpOfflineProcessIsRunning.Remove(picdump.Id);
+            StateHasChanged();
+        }
+
+
+    }
+
+    public void Dispose()
+    {
+        cancellationTokenSource?.Cancel();
+        cancellationTokenSource?.Dispose();
+    }
+}

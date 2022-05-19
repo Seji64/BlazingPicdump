@@ -1,0 +1,17 @@
+﻿@inherits LayoutComponentBase
+
+<MudThemeProvider />
+<MudDialogProvider/>
+<MudSnackbarProvider/>
+
+<MudLayout>
+    <MudAppBar Elevation="1" Color="Color.Tertiary">
+         <MudAvatar Image="icon-maskable.png" Size="Size.Medium" Class="ma-2" Square="true" />
+        <MudText Typo="Typo.h5" Class="ml-3">BlazingPicdump</MudText>
+        <MudSpacer />
+        <MudIconButton Icon="@Icons.Custom.Brands.GitHub" Color="Color.Inherit" Link="https://seji64.github.io/BlazingPicdump/"/>
+    </MudAppBar>
+    <MudMainContent>
+        @Body
+    </MudMainContent>
+</MudLayout>
