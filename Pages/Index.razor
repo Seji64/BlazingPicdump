@@ -131,7 +131,7 @@
 
     private void NavigateToPicdump(Picdump picdump)
     {
-        NavigationManager.NavigateTo($"picdump/{picdump.Id}");
+        NavigationManager.NavigateTo($"picdump/{picdump.Hash}");
     }
     private async Task Refresh()
     {

@@ -1,4 +1,4 @@
-﻿@page "/picdump/{Id:long}"
+﻿@page "/picdump/{Hash}"
 @inject ISnackbar Snackbar
 @inject IHttpClientFactory ClientFactory
 @inject IIndexedDbFactory DbFactory
@@ -15,7 +15,7 @@
 
         @if(error_IdNotFoundInDb)
         {
-            <MudAlert Severity="Severity.Error">@($"Leider ist ein Fehler aufgetreten. Der Picdump mit der Id '{Id}' wurde nicht gefunden")</MudAlert>
+            <MudAlert Severity="Severity.Error">@($"Leider ist ein Fehler aufgetreten. Der Picdump mit der Id '{Hash}' wurde nicht gefunden")</MudAlert>
         }
         else if (!NetworkState.IsOnline && networkNeeded)
         {
@@ -58,7 +58,8 @@
 @code {
 
     [Parameter]
-    public long? Id { get; set; }
+    public string? Hash { get; set; }
+    private long? Id { get; set; }
 
     List<Image>? Images;
     bool error_IdNotFoundInDb = false;
@@ -69,7 +70,7 @@
     protected override async Task OnParametersSetAsync()
     {
 
-        if (Id != null)
+        if (Hash != null)
         {
             await GetPicDumpImages();
         }
@@ -86,7 +87,8 @@
         string? picDumpBaseUrl;
         using (var db = await this.DbFactory.Create<PicdumpDb>())
         {
-            picDumpBaseUrl = db.Picdumps.SingleOrDefault(x => x.Id == Id)?.BaseURL;
+            picDumpBaseUrl = db.Picdumps.SingleOrDefault(x => x.Hash == Hash)?.BaseURL;
+            Id = db.Picdumps.SingleOrDefault(x => x.Hash == Hash)?.Id;
         }
 
         if (!string.IsNullOrEmpty(picDumpBaseUrl))
@@ -145,7 +147,7 @@
         else
         {
             error_IdNotFoundInDb = true;
-            Log.Error($"no picdump found in db with ID/hash {Id}");
+            Log.Error($"no picdump found in db with ID/hash {Hash}");
         }
     }
 }
