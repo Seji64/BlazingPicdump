@@ -175,6 +175,7 @@
             Log.Debug("First Render");
 
             await Refresh();
+            StateHasChanged();
         }
         else
         {
@@ -279,7 +280,7 @@
     {
         HttpClient httpClient = ClientFactory.CreateClient("Picdump");
 
-        var response = await httpClient.GetAsync("/http://www.bildschirmarbeiter.com/plugs/category/picdumps");
+        var response = await httpClient.GetAsync("/http://www.bildschirmarbeiter.com/plugs/category/pics");
         response.EnsureSuccessStatusCode();
         var mainContent = await response.Content.ReadAsStringAsync();
         var picdumps =  await Helper.GetPicdumpOverview(mainContent, httpClient, cancellationTokenSource.Token);
