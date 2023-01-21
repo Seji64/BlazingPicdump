@@ -1,11 +1,13 @@
 using BlazingPicdump;
+using BlazingPicdump.DB;
 using BlazingPicdump.Services;
-using IndexedDB.Blazor;
+using SqliteWasmHelper;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor;
 using MudBlazor.Services;
 using Serilog;
+using Microsoft.EntityFrameworkCore;
 
 namespace Company.WebApplication1
 {
@@ -30,7 +32,10 @@ namespace Company.WebApplication1
                 config.SnackbarConfiguration.ShowTransitionDuration = 500;
                 config.SnackbarConfiguration.SnackbarVariant = Variant.Text;
             });
-            builder.Services.AddSingleton<IIndexedDbFactory, IndexedDbFactory>();
+
+            builder.Services.AddSqliteWasmDbContextFactory<PicdumpDbContext>(
+                opts => opts.UseSqlite("Data Source=picdumps.sqlite3"));
+
             builder.Services.AddTransient<NetworkStateInterop>();
             builder.Services.AddSingleton<NetworkState>();
 

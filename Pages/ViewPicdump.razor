@@ -1,7 +1,7 @@
 ﻿@page "/picdump/{Hash}"
 @inject ISnackbar Snackbar
 @inject IHttpClientFactory ClientFactory
-@inject IIndexedDbFactory DbFactory
+@inject ISqliteWasmDbContextFactory<PicdumpDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject NetworkState NetworkState
 @implements IDisposable
@@ -85,6 +85,8 @@
     private async Task GetPicDumpImages()
     {
         string? picDumpBaseUrl;
+        Picdump? picdump = null;
+
         using (var db = await this.DbFactory.Create<PicdumpDb>())
         {
             picDumpBaseUrl = db.Picdumps.SingleOrDefault(x => x.Hash == Hash)?.BaseURL;
