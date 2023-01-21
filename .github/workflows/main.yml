@@ -28,7 +28,12 @@ jobs:
         uses: actions/setup-dotnet@v3
         with:
           dotnet-version: 7.0.x
-
+      
+      - name: Install WASM Workload
+        uses: ./
+        with:
+          command: dotnet workload restore
+      
       # Publish the site
       - name: Publish
         run: dotnet publish BlazingPicdump.csproj -c Release -o public -p:GHPages=true
