@@ -1,4 +1,5 @@
-﻿using Serilog;
+﻿#nullable disable
+using Serilog;
 
 namespace BlazingPicdump.Services
 {
