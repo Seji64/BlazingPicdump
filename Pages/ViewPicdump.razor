@@ -1,7 +1,7 @@
 ﻿@page "/picdump/{Hash}"
+@using Microsoft.EntityFrameworkCore
 @inject ISnackbar Snackbar
 @inject IHttpClientFactory ClientFactory
-@inject ISqliteWasmDbContextFactory<PicdumpDbContext> DbFactory
 @inject NavigationManager NavigationManager
 @inject NetworkState NetworkState
 @implements IDisposable
@@ -13,7 +13,7 @@
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-5">
     <MudGrid Justify="Justify.Center">
 
-        @if(error_IdNotFoundInDb)
+        @if (error_IdNotFoundInDb)
         {
             <MudAlert Severity="Severity.Error">@($"Leider ist ein Fehler aufgetreten. Der Picdump mit der Id '{Hash}' wurde nicht gefunden")</MudAlert>
         }
@@ -23,13 +23,13 @@
         }
         else
         {
-            @if(Images != null && Images.Any())
+            @if (picdump != null && picdump.Images != null && picdump.Images.Any())
             {
-                @foreach(Image image in Images)
+                @foreach (Image image in picdump.Images)
                 {
                     <MudItem xs="12">
-                        <MudImage Fluid="true" Src=@(image.Url) Class="rounded-lg" Elevation="25"/>
-                    </MudItem>    
+                        <MudImage Fluid="true" Src=@(image.Url) Class="rounded-lg" Elevation="25" />
+                    </MudItem>
                 }
             }
             else
@@ -38,15 +38,15 @@
                 {
                     <MudItem xs="12">
                         <MudSkeleton SkeletonType="SkeletonType.Rectangle" Animation="Animation.Wave" Height="400px" Width="330px" />
-                    </MudItem>  
+                    </MudItem>
                 }
             }
         }
 
 
-     </MudGrid>
+    </MudGrid>
     <MudScrollToTop>
-        <MudFab Color="Color.Tertiary" Icon="@Icons.Filled.ArrowCircleUp"/>
+        <MudFab Color="Color.Tertiary" Icon="@Icons.Material.Filled.ArrowCircleUp" />
     </MudScrollToTop>
 
 </MudContainer>
@@ -61,7 +61,7 @@
     public string? Hash { get; set; }
     private long? Id { get; set; }
 
-    List<Image>? Images;
+    Picdump? picdump = null;
     bool error_IdNotFoundInDb = false;
     bool networkNeeded = false;
 
@@ -84,67 +84,68 @@
 
     private async Task GetPicDumpImages()
     {
-        string? picDumpBaseUrl;
-        Picdump? picdump = null;
 
-        using (var db = await this.DbFactory.Create<PicdumpDb>())
+        using (var db = new PicdumpDbContext())
         {
-            picDumpBaseUrl = db.Picdumps.SingleOrDefault(x => x.Hash == Hash)?.BaseURL;
-            Id = db.Picdumps.SingleOrDefault(x => x.Hash == Hash)?.Id;
+            picdump = db.Picdumps.AsNoTracking().Include(x => x.Images).SingleOrDefault(x => x.Hash == Hash);
         }
 
-        if (!string.IsNullOrEmpty(picDumpBaseUrl))
+        if (picdump != null && !string.IsNullOrEmpty(picdump.BaseURL))
         {
-            using (var db = await this.DbFactory.Create<PicdumpDb>())
+            if (picdump.Images != null && picdump.Images.Any())
             {
-                if (db.Images.Any(p => p.ParentPicdumpId == Id))
+                StateHasChanged();
+            }
+            else
+            {
+                networkNeeded = true;
+                if (NetworkState.IsOnline)
                 {
-                    Images = new();
-                    db.Images.Where(p => p.ParentPicdumpId == Id).AsParallel().AsOrdered().ForAll(i =>
+                    try
                     {
-                        Images.Add(i);
-                        StateHasChanged();
-                    });
-                }
-                else
-                {
-                    networkNeeded = true;
+                        var httpClient = ClientFactory.CreateClient("Picdump");
+                        var response = await httpClient.GetAsync($"/{picdump.BaseURL}");
+                        response.EnsureSuccessStatusCode();
 
-                    if (NetworkState.IsOnline)
+                        var content = await response.Content.ReadAsStringAsync();
+                        var imgLinks = Helper.GetPicdumpImageUrls(content);
+                        var token = cancellationTokenSource.Token;
+
+                        picdump.Images = new();
+
+                        await System.Threading.Tasks.Parallel.ForEachAsync(imgLinks, async (imgLink, token) =>
+                        {
+                            var ImghttpClient = ClientFactory.CreateClient("Picdump");
+                            var imageFileName = System.IO.Path.GetFileName(imgLink);
+                            var base64Payload = await Helper.DownloadImageAsBase64($"/{imgLink}", ImghttpClient, cancellationTokenSource.Token);
+                            picdump.Images.Add(new Image() { Name = imageFileName, Url = $"data:image/png;base64,{base64Payload}" });
+                            StateHasChanged();
+                        });
+
+                        using (var db = new PicdumpDbContext())
+                        {
+                            var picdumpdb = await db.Picdumps.Include(x => x.Images).SingleAsync(x => x.Id == picdump.Id);
+
+                            picdumpdb.Images = new();
+                            picdumpdb.Images.AddRange(picdump.Images);
+                            db.Update(picdumpdb);
+                            await db.SaveToCacheAsync();
+                        }
+
+                    }
+                    catch (TaskCanceledException)
                     {
-                        try
-                        {
-                            var httpClient = ClientFactory.CreateClient("Picdump");
-                            var response = await httpClient.GetAsync($"/{picDumpBaseUrl}");
-                            response.EnsureSuccessStatusCode();
-
-                            var content = await response.Content.ReadAsStringAsync();
-                            var imgLinks = Helper.GetPicdumpImageUrls(content);
-                            var token = cancellationTokenSource.Token;
-
-                            Images = new();
-
-                            await System.Threading.Tasks.Parallel.ForEachAsync(imgLinks, async (imgLink, token) =>
-                            {
-                                var ImghttpClient = ClientFactory.CreateClient("Picdump");
-                                var imageFileName = System.IO.Path.GetFileName(imgLink);
-                                var base64Payload = await Helper.DownloadImageAsBase64($"/{imgLink}", ImghttpClient, cancellationTokenSource.Token);
-                                Images.Add(new Image() { Name = imageFileName, Url=$"data:image/png;base64,{base64Payload}", ParentPicdumpId = Id});
-                                StateHasChanged();
-                            });
-                        }
-                        catch (TaskCanceledException)
-                        {
-                            Log.Debug("Task was cancled");
-                        }
-                        catch (Exception ex)
-                        {
-                            Snackbar.Add("Fehler: Picdump Bilder konnten nicht geladen werden!", Severity.Error);
-                            Log.Error(ex.Message);
-                        }
+                        Log.Debug("Task was cancled");
+                    }
+                    catch (Exception ex)
+                    {
+                        Snackbar.Add("Fehler: Picdump Bilder konnten nicht geladen werden!", Severity.Error);
+                        Log.Error(ex.Message);
                     }
                 }
             }
+
+
         }
         else
         {

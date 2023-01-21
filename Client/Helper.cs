@@ -109,7 +109,7 @@ namespace BlazingPicdump
                     Console.WriteLine(imageUrl);
                     var imageFileName = Path.GetFileName(imageUrl);
                     var base64Payload = await DownloadImageAsBase64($"/{imageUrl}", httpClient, cancellationToken);
-                    images.Add(new Image() { Name = imageFileName, Url = $"data:image/png;base64,{base64Payload}", ParentPicdumpId = ParentPicdumpId });
+                    images.Add(new Image() { Name = imageFileName, Url = $"data:image/png;base64,{base64Payload}" });
                 }
             });
 

@@ -1,5 +1,6 @@
 ﻿using BlazingPicdump.Services;
 using Microsoft.AspNetCore.Components;
+#nullable disable
 
 namespace BlazingPicdump.Components
 {

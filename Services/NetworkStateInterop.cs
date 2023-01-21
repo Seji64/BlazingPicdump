@@ -1,4 +1,5 @@
 ﻿using Microsoft.JSInterop;
+#nullable disable
 
 namespace BlazingPicdump.Services
 {

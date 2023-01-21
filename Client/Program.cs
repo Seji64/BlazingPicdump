@@ -1,13 +1,12 @@
 using BlazingPicdump;
 using BlazingPicdump.DB;
 using BlazingPicdump.Services;
-using SqliteWasmHelper;
+using BlazorDB;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor;
 using MudBlazor.Services;
 using Serilog;
-using Microsoft.EntityFrameworkCore;
 
 namespace Company.WebApplication1
 {
@@ -33,9 +32,6 @@ namespace Company.WebApplication1
                 config.SnackbarConfiguration.SnackbarVariant = Variant.Text;
             });
 
-            builder.Services.AddSqliteWasmDbContextFactory<PicdumpDbContext>(
-                opts => opts.UseSqlite("Data Source=picdumps.sqlite3"));
-
             builder.Services.AddTransient<NetworkStateInterop>();
             builder.Services.AddSingleton<NetworkState>();
 
@@ -48,7 +44,9 @@ namespace Company.WebApplication1
                             .WriteTo.BrowserConsole()
                             .CreateLogger();
 
-            await builder.Build().RunAsync();
+            WebAssemblyHost host = builder.Build();
+            await host.Services.ConfigureBlazorDBAsync<PicdumpDbContext>();
+            await host.RunAsync();
         }
     }
 }

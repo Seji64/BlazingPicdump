@@ -4,7 +4,6 @@
 @using Microsoft.EntityFrameworkCore
 @inject IHttpClientFactory ClientFactory
 @inject NavigationManager NavigationManager
-@inject ISqliteWasmDbContextFactory<PicdumpDbContext> DbFactory
 @inject NetworkState NetworkState
 @implements IDisposable
 
@@ -126,7 +125,7 @@
     private bool _loading = false;
     private CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
     public List<long> PicdumpOfflineProcessIsRunning { get; set; } = new();
-     private List<Picdump>? Picdumps;
+    private List<Picdump>? Picdumps;
 
     private void NavigateToPicdump(Picdump picdump)
     {
@@ -135,6 +134,7 @@
     private async Task Refresh()
     {
         _loading = true;
+        Picdumps = new();
         Log.Debug("Networkstate IsOnline: {NetworkState}", NetworkState.IsOnline);
         if (NetworkState.IsOnline)
         {
@@ -146,25 +146,16 @@
 
                 if (onlinePicdumps != null && onlinePicdumps.Any())
                 {
-
-                    using (var db = await this.DbFactory.CreateDbContextAsync())
+                    using (var db = new PicdumpDbContext())
                     {
-                        onlinePicdumps.AsParallel().ForAll(x =>
-                        {
-                            if (!db.Picdumps.Any(y => y.Hash == x.Hash))
-                            {
-                                db.Picdumps.Add(x);
-                            }
-                        });
-
-                        await db.SaveChangesAsync();
+                        await db.Picdumps.AddRangeAsync(onlinePicdumps.Where(onliePicdump => !db.Picdumps.Any(dbpicdump => dbpicdump.Hash == onliePicdump.Hash)).ToList());
+                        await db.SaveToCacheAsync();
                     }
                 }
                 else
                 {
                     Log.Warning("online fetch did not return any picdumps");
                 }
-
             }
             catch (Exception ex)
             {
@@ -176,23 +167,24 @@
             }
         }
 
+        using (var db = new PicdumpDbContext())
+        {
+            Picdumps = await db.Picdumps.AsNoTracking().Include(x => x.Images).Include(y => y.Thumbnail).ToListAsync();
+        }
+
         _loading = false;
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task OnInitializedAsync()
     {
-        if (firstRender)
-        {       
-            await Refresh();
-            StateHasChanged();
-        }
+        await Refresh();
     }
 
     private async Task<List<Picdump>> GetPicdumpsFromDBAsync()
     {
         List<Picdump> dbPicdumps;
 
-        using (var db = await this.DbFactory.CreateDbContextAsync())
+        using (var db = new PicdumpDbContext())
         {
             dbPicdumps = await db.Picdumps.AsNoTracking().ToListAsync();
         }
@@ -214,17 +206,17 @@
 
     private async Task DeleteOfflinePicdump(Picdump picdump)
     {
-        using (var ctx = await DbFactory.CreateDbContextAsync())
+        using (var db = new PicdumpDbContext())
         {
-            var dbpicdump = await ctx.Picdumps.SingleOrDefaultAsync(x => x.Id == picdump.Id);
+            var dbpicdump = await db.Picdumps.SingleOrDefaultAsync(x => x.Id == picdump.Id);
             if (dbpicdump != null)
             {
                 dbpicdump.Images?.Clear();
-                ctx.Update(dbpicdump);
-                await ctx.SaveChangesAsync();
-                ctx.Picdumps.Remove(dbpicdump);
-                await ctx.SaveChangesAsync();
-            }     
+                db.Update(dbpicdump);
+                await db.SaveChangesAsync();
+                db.Picdumps.Remove(dbpicdump);
+                await db.SaveToCacheAsync();
+            }
         }
         StateHasChanged();
     }
@@ -237,15 +229,15 @@
 
         try
         {
-            using (var db = await this.DbFactory.CreateDbContextAsync())
+            using (var db = new PicdumpDbContext())
             {
-                baseUrl = db.Picdumps.AsNoTracking().SingleOrDefault(x => x.Id == picdump.Id)?.BaseURL;
+                baseUrl = db.Picdumps.AsNoTracking().Select(x => new { x.BaseURL,x.Id }).SingleOrDefault(x => x.Id == picdump.Id)?.BaseURL;
             }
 
             if (!string.IsNullOrEmpty(baseUrl))
             {
                 var images = await Helper.GetAllPicdumpImages(baseUrl, ClientFactory.CreateClient("Picdump"), picdump.Id, cancellationTokenSource.Token);
-                using (var db = await this.DbFactory.CreateDbContextAsync())
+                using (var db = new PicdumpDbContext())
                 {
                     var picdumpdb = db.Picdumps.Single(x => x.Id == picdump.Id);
 
@@ -253,9 +245,17 @@
                     picdumpdb.Images.AddRange(images);
 
                     db.Picdumps.Update(picdumpdb);
-                    await db.SaveChangesAsync();
+                    await db.SaveToCacheAsync();
                 }
+
+                Snackbar.Add($"Picdump '{picdump.Name}' komplett heruntergeladen!",Severity.Success);
             }
+            else
+            {
+                throw new Exception("Picdump not found in database!");
+            }
+
+
         }
         catch (Exception ex)
         {
@@ -276,4 +276,4 @@
         cancellationTokenSource?.Cancel();
         cancellationTokenSource?.Dispose();
     }
-}
+    }
