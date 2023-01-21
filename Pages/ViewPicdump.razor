@@ -3,11 +3,12 @@
 @inject ISnackbar Snackbar
 @inject IHttpClientFactory ClientFactory
 @inject NavigationManager NavigationManager
+@inject IJSRuntime jsRuntime
 @inject NetworkState NetworkState
 @implements IDisposable
 
 <MudToolBar>
-    <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.ArrowBack" OnClick="@(() => NavigationManager.NavigateTo("../"))">Back</MudButton>
+    <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.ArrowBack" OnClick="@(() => BackToPreviousPage())">Back</MudButton>
     <MudSpacer />
 </MudToolBar>
 <MudContainer MaxWidth="MaxWidth.Small" Class="mt-5">
@@ -51,7 +52,7 @@
 
 </MudContainer>
 <MudToolBar>
-    <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.ArrowBack" OnClick="@(() => NavigationManager.NavigateTo("../"))">Back</MudButton>
+    <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.ArrowBack" OnClick="@(() => BackToPreviousPage())">Back</MudButton>
     <MudSpacer />
 </MudToolBar>
 
@@ -80,6 +81,11 @@
     {
         cancellationTokenSource?.Cancel();
         cancellationTokenSource?.Dispose();
+    }
+
+    private async Task BackToPreviousPage()
+    {
+        await jsRuntime.InvokeVoidAsync("history.back");
     }
 
     private async Task GetPicDumpImages()
