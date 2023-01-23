@@ -11,7 +11,7 @@
 
 <MudToolBar>
     <MudSpacer />
-    <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.Refresh" OnClick="@Refresh" Disabled="@_loading" >Refresh</MudButton>    
+    <MudButton Variant="Variant.Text" Color="Color.Secondary" StartIcon="@Icons.Material.Outlined.Refresh" OnClick="@(() => Refresh())" Disabled="@_loading" >Refresh</MudButton>    
 </MudToolBar>
 
 <MudContainer MaxWidth="MaxWidth.Medium" Class="mt-5">
@@ -65,20 +65,25 @@
                                             <MudTooltip Text="Für Offline nutzung herunterladen">
                                                 <MudIconButton Icon="@Icons.Material.Outlined.DownloadForOffline" Color="Color.Default" aria-label="DownloadForOffline" OnClick="@(() => DownloadPicdump(picdump))" />
                                             </MudTooltip>    
-                                        }           
-                                    }    
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <MudTooltip Text="Offlinekopie löschen">
+                                                <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" aria-label="DeleteOfflineCache" OnClick="@(() => DeleteOfflinePicdump(picdump))" />
+                                            </MudTooltip>
+                                        }
                                 </Online>
+                                <Offline>
+                                    if (picdump.IsOfflineAvailable)
+                                    {
+                                        <MudTooltip Text="Offlinekopie löschen">
+                                            <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" aria-label="DeleteOfflineCache" OnClick="@(() => DeleteOfflinePicdump(picdump))" />
+                                        </MudTooltip>
+                                    }
+                                </Offline>
                             </BlazingPicdump.Components.Network>
-                                @if (PicdumpOfflineProcessIsRunning.Contains(picdump.Id))
-                                {
-                                    <MudProgressCircular Class="mt-1 mr-2" Size="Size.Small" Indeterminate="true"/>
-                                }
-                                else if (picdump.IsOfflineAvailable)
-                                {
-                                    <MudTooltip Text="Offlinekopie löschen">
-                                        <MudIconButton Icon="@Icons.Material.Outlined.Delete" Color="Color.Error" aria-label="DeleteOfflineCache" OnClick="@(() => DeleteOfflinePicdump(picdump))" />
-                                    </MudTooltip>
-                                }
+
                         </CardHeaderActions>
                     </MudCardHeader>
                     <MudCardContent class="d-flex flex-row flex-grow-1 gap-2 align-center">
@@ -131,12 +136,12 @@
     {
         NavigationManager.NavigateTo($"picdump/{picdump.Hash}");
     }
-    private async Task Refresh()
+    private async Task Refresh(bool dbonly = false)
     {
         _loading = true;
         Picdumps = new();
         Log.Debug("Networkstate IsOnline: {NetworkState}", NetworkState.IsOnline);
-        if (NetworkState.IsOnline)
+        if (NetworkState.IsOnline && dbonly == false)
         {
             try
             {
@@ -208,17 +213,14 @@
     {
         using (var db = new PicdumpDbContext())
         {
-            var dbpicdump = await db.Picdumps.SingleOrDefaultAsync(x => x.Id == picdump.Id);
+            var dbpicdump = await db.Picdumps.Include(i => i.Images).Include(t => t.Thumbnail).SingleOrDefaultAsync(x => x.Id == picdump.Id);
             if (dbpicdump != null)
             {
-                dbpicdump.Images?.Clear();
-                db.Update(dbpicdump);
-                await db.SaveChangesAsync();
                 db.Picdumps.Remove(dbpicdump);
                 await db.SaveToCacheAsync();
             }
         }
-        StateHasChanged();
+        await Refresh(true);
     }
 
     private async Task DownloadPicdump(Picdump picdump)
@@ -239,7 +241,7 @@
                 var images = await Helper.GetAllPicdumpImages(baseUrl, ClientFactory.CreateClient("Picdump"), picdump.Id, cancellationTokenSource.Token);
                 using (var db = new PicdumpDbContext())
                 {
-                    var picdumpdb = db.Picdumps.Single(x => x.Id == picdump.Id);
+                    var picdumpdb = db.Picdumps.Include(i => i.Images).Single(x => x.Id == picdump.Id);
 
                     picdumpdb.Images = new();
                     picdumpdb.Images.AddRange(images);
@@ -255,7 +257,6 @@
                 throw new Exception("Picdump not found in database!");
             }
 
-
         }
         catch (Exception ex)
         {
@@ -265,7 +266,7 @@
         finally
         {
             PicdumpOfflineProcessIsRunning.Remove(picdump.Id);
-            StateHasChanged();
+            await Refresh(true);
         }
 
 
