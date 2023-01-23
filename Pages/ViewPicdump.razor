@@ -162,7 +162,7 @@
                     catch (Exception ex)
                     {
                         Snackbar.Add("Fehler: Picdump Bilder konnten nicht geladen werden!", Severity.Error);
-                        Log.Error(ex.Message);
+                        Log.Error("{ErrorMessage}",ex.Message);
                     }
                 }
             }
@@ -172,7 +172,7 @@
         else
         {
             error_IdNotFoundInDb = true;
-            Log.Error($"no picdump found in db with ID/hash {Hash}");
+            Log.Error("no picdump found in db with ID/hash {Hash}",Hash);
         }
     }
 }
