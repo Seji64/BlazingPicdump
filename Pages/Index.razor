@@ -129,7 +129,7 @@
 {
     private bool _loading = false;
     private CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-    public List<long> PicdumpOfflineProcessIsRunning { get; set; } = new();
+    private List<long> PicdumpOfflineProcessIsRunning { get; set; } = new();
     private List<Picdump>? Picdumps;
 
     private void NavigateToPicdump(Picdump picdump)
@@ -140,15 +140,12 @@
     {
         _loading = true;
         Picdumps = new();
-        Log.Debug("Networkstate IsOnline: {NetworkState}", NetworkState.IsOnline);
+
         if (NetworkState.IsOnline && dbonly == false)
         {
             try
             {
-                Log.Debug("fetching online picdumps");
                 var onlinePicdumps = await GetAvailibePicdumps();
-                Log.Debug("DONE!");
-
                 if (onlinePicdumps != null && onlinePicdumps.Any())
                 {
                     using (var db = new PicdumpDbContext())
@@ -268,7 +265,6 @@
             PicdumpOfflineProcessIsRunning.Remove(picdump.Id);
             await Refresh(true);
         }
-
 
     }
 
