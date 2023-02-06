@@ -148,10 +148,30 @@
                 var onlinePicdumps = await GetAvailibePicdumps();
                 if (onlinePicdumps != null && onlinePicdumps.Any())
                 {
-                    using (var db = new PicdumpDbContext())
+                    try
                     {
-                        await db.Picdumps.AddRangeAsync(onlinePicdumps.Where(onliePicdump => !db.Picdumps.Any(dbpicdump => dbpicdump.Hash == onliePicdump.Hash)).ToList());
-                        await db.SaveToCacheAsync();
+                        using (var db = new PicdumpDbContext())
+                        {
+
+                            Picdumps = await db.Picdumps.AsNoTracking().Include(x => x.Thumbnail).Include(i => i.Images).ToListAsync();
+                            var cancellationToken = cancellationTokenSource.Token;
+
+                            await Parallel.ForEachAsync(onlinePicdumps, async (onlinePicdump, cancellationToken) =>
+                            {
+                                var hashDupFromDb = Picdumps.SingleOrDefault(x => x.Hash == onlinePicdump.Hash);
+                                if (hashDupFromDb is null)
+                                {
+                                    Log.Debug("Not found in DB! => Adding");
+                                    onlinePicdump.PublishDate = await Helper.GetPicdumpDate(ClientFactory.CreateClient("Picdump"), onlinePicdump.BaseURL!);
+                                    db.Picdumps.Add(onlinePicdump);
+                                }
+                            });
+                            await db.SaveToCacheAsync();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error("{ErrorMessage}", ex.Message);
                     }
                 }
                 else
@@ -171,7 +191,7 @@
 
         using (var db = new PicdumpDbContext())
         {
-            Picdumps = await db.Picdumps.AsNoTracking().Include(x => x.Images).Include(y => y.Thumbnail).ToListAsync();
+            Picdumps = await db.Picdumps.AsNoTracking().Include(x => x.Thumbnail).Include(i => i.Images).OrderByDescending(x => x.PublishDate).ToListAsync();
         }
 
         _loading = false;
@@ -180,18 +200,6 @@
     protected override async Task OnInitializedAsync()
     {
         await Refresh();
-    }
-
-    private async Task<List<Picdump>> GetPicdumpsFromDBAsync()
-    {
-        List<Picdump> dbPicdumps;
-
-        using (var db = new PicdumpDbContext())
-        {
-            dbPicdumps = await db.Picdumps.AsNoTracking().ToListAsync();
-        }
-
-        return dbPicdumps;
     }
 
     private async Task<List<Picdump>> GetAvailibePicdumps()
@@ -217,7 +225,7 @@
                 await db.SaveToCacheAsync();
             }
         }
-        await Refresh(true);
+        await Refresh();
     }
 
     private async Task DownloadPicdump(Picdump picdump)
@@ -235,7 +243,7 @@
 
             if (!string.IsNullOrEmpty(baseUrl))
             {
-                var images = await Helper.GetAllPicdumpImages(baseUrl, ClientFactory.CreateClient("Picdump"), picdump.Id, cancellationTokenSource.Token);
+                var images = await Helper.GetAllPicdumpImages(baseUrl, ClientFactory.CreateClient("Picdump"), cancellationTokenSource.Token);
                 using (var db = new PicdumpDbContext())
                 {
                     var picdumpdb = db.Picdumps.Include(i => i.Images).Single(x => x.Id == picdump.Id);
